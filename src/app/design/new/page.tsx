@@ -35,6 +35,41 @@ type ParsedResponseBody = {
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null;
 
+type ProjectSummary = Pick<ProjectRecord, "id" | "name">;
+
+const isProjectSummary = (value: unknown): value is ProjectSummary =>
+  isRecord(value) && typeof value.id === "string" && typeof value.name === "string";
+
+function normalizeProjectsPayload(payload: unknown): ProjectSummary[] {
+  if (Array.isArray(payload)) {
+    const normalized = payload.filter(isProjectSummary);
+    if (normalized.length !== payload.length) {
+      console.warn("[design/new] Some project entries were invalid and ignored", {
+        received: payload.length,
+        accepted: normalized.length
+      });
+    }
+    return normalized;
+  }
+
+  if (isRecord(payload) && Array.isArray(payload.projects)) {
+    const normalized = payload.projects.filter(isProjectSummary);
+    if (normalized.length !== payload.projects.length) {
+      console.warn("[design/new] Some nested project entries were invalid and ignored", {
+        received: payload.projects.length,
+        accepted: normalized.length
+      });
+    }
+    return normalized;
+  }
+
+  if (payload !== null && payload !== undefined) {
+    console.warn("[design/new] Unexpected projects payload shape", payload);
+  }
+  return [];
+}
+
+
 async function parseResponseBody(response: Response): Promise<ParsedResponseBody> {
   const text = await response.text();
   const trimmed = text.trim();
@@ -85,13 +120,16 @@ export default function NewDesignPage() {
   const [activeTool, setActiveTool] = useState<MapTool>("draw-polygon");
   const [error, setError] = useState("");
   const [prefs, setPrefs] = useState(initialPrefs);
-  const [existing, setExisting] = useState<ProjectRecord[]>([]);
+  const [existing, setExisting] = useState<ProjectSummary[]>([]);
   const [importText, setImportText] = useState("");
 
   const area = useMemo(() => Math.round(areaFromBoundary(boundary)), [boundary]);
 
   useEffect(() => {
-    fetch("/api/projects").then((r) => r.json()).then((d: ProjectRecord[]) => setExisting(d)).catch(() => []);
+    fetch("/api/projects")
+      .then((r) => r.json() as Promise<unknown>)
+      .then((payload) => setExisting(normalizeProjectsPayload(payload)))
+      .catch(() => setExisting([]));
   }, []);
 
   async function searchAddress() {
@@ -247,7 +285,7 @@ export default function NewDesignPage() {
 
       <section className="card p-4">
         <h2 className="font-semibold">Reopen demo projects</h2>
-        <ul className="mt-2 space-y-1 text-sm">{existing.slice(0, 6).map((p) => <li key={p.id}><a className="text-moss underline" href={`/design/${p.id}`}>{p.name}</a></li>)}</ul>
+        <ul className="mt-2 space-y-1 text-sm">{(Array.isArray(existing) ? existing : []).slice(0, 6).map((p) => <li key={p.id}><a className="text-moss underline" href={`/design/${p.id}`}>{p.name}</a></li>)}</ul>
       </section>
 
       <section className="card p-4">
