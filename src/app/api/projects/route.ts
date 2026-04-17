@@ -54,7 +54,8 @@ export async function GET() {
   try {
     const projects = await prisma.project.findMany({ include: { siteProfile: true, preferences: true, layoutItems: true }, orderBy: { updatedAt: "desc" } });
     return NextResponse.json(projects);
-  } catch {
+  } catch (error) {
+    console.error("[api/projects][GET] unexpected error", error);
     return jsonError("Unable to list projects.");
   }
 }
@@ -122,7 +123,8 @@ export async function POST(req: Request) {
     });
 
     return NextResponse.json(project, { status: 201 });
-  } catch {
+  } catch (error) {
+    console.error("[api/projects][POST] unexpected error", error);
     return jsonError("Unexpected server error while creating project.", 500);
   }
 }
