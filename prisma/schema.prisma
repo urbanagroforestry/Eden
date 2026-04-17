@@ -1,0 +1,128 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum Layer {
+  CANOPY
+  LOW_TREE
+  SHRUB
+  HERBACEOUS
+  GROUNDCOVER
+  RHIZOSPHERE
+  VERTICAL
+  SUPPORT
+}
+
+enum Confidence {
+  HIGH
+  MEDIUM
+  VERIFY
+}
+
+model Project {
+  id              String          @id @default(cuid())
+  name            String
+  address         String?
+  latitude        Float
+  longitude       Float
+  boundaryGeoJson String?
+  shadeGeoJson    String?
+  structuresJson  String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  siteProfile     SiteProfile?
+  preferences     UserPreferences?
+  layoutItems     LayoutItem[]
+  assets          UploadedAsset[]
+}
+
+model SiteProfile {
+  id                  String     @id @default(cuid())
+  projectId           String     @unique
+  project             Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  lotAreaSqm          Float
+  hardinessZone       String
+  hardinessConfidence Confidence
+  precipitationBand   String
+  precipitationConf   Confidence
+  sunExposureJson     String
+  slopeAspect         String
+  slopeConfidence     Confidence
+  zoneAreasJson       String
+}
+
+model UserPreferences {
+  id                     String  @id @default(cuid())
+  projectId              String  @unique
+  project                Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  goals                  String
+  maintenanceTolerance   String
+  irrigationTolerance    String
+  stylePreference        String
+  householdPriorities    String
+  constraints            String
+  templateKey            String
+}
+
+model Plant {
+  id                       String  @id
+  commonName               String
+  scientificName           String
+  layer                    Layer
+  supportRole              String?
+  edibleCategory           String
+  edibleUse                String
+  hardinessMin             Int
+  hardinessMax             Int
+  regionalTags             String
+  sunNeeds                 String
+  waterNeeds               String
+  soilTolerance            String
+  drainageTolerance        String
+  pHTolerance              String
+  matureHeight             Float
+  matureWidth              Float
+  spreadHabit              String
+  rootBehavior             String
+  maintenanceLevel         String
+  rootRiskNearFoundation   Int
+  messyFruitRisk           Int
+  childFriendlyFlag        Boolean
+  pollinatorValue          Int
+  biodiversityValue        Int
+  productionValue          Int
+  aestheticValue           Int
+  neighborhoodFriendliness Int
+  notes                    String
+  cautions                 String
+  imagePath                String?
+}
+
+model LayoutItem {
+  id              String   @id @default(cuid())
+  projectId       String
+  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  label           String
+  layer           Layer
+  lat             Float
+  lon             Float
+  radiusMeters    Float
+  zoneType        String
+  rationale       String
+  confidence      Confidence
+}
+
+model UploadedAsset {
+  id          String   @id @default(cuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  originalName String
+  mimeType    String
+  storagePath String
+  createdAt   DateTime @default(now())
+}
