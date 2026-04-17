@@ -4,9 +4,9 @@ import dynamic from "next/dynamic";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { areaFromBoundary, isValidBoundary } from "@/lib/geo";
-import { BoundaryTools } from "@/components/BoundaryTools";
 import { DESIGN_TEMPLATES } from "@/lib/templates";
 import { ProjectRecord } from "@/lib/contracts";
+import type { MapAnnotation, MapCircle, MapTool } from "@/components/MapEditor";
 
 const MapEditor = dynamic(() => import("@/components/MapEditor"), { ssr: false });
 
@@ -26,6 +26,33 @@ const initialPrefs = {
 
 const toggleInArray = (arr: string[], value: string) => (arr.includes(value) ? arr.filter((v) => v !== value) : [...arr, value]);
 
+type ApiErrorShape = { error?: string | { message?: string }; message?: string };
+
+const isJsonResponse = (response: Response) => (response.headers.get("content-type") || "").includes("application/json");
+
+async function readErrorMessage(response: Response): Promise<string> {
+  const fallback = `Request failed (${response.status})`;
+
+  if (isJsonResponse(response)) {
+    try {
+      const body = (await response.json()) as ApiErrorShape;
+      if (typeof body.error === "string") return body.error;
+      if (typeof body.error === "object" && body.error?.message) return body.error.message;
+      if (typeof body.message === "string") return body.message;
+      return fallback;
+    } catch {
+      return fallback;
+    }
+  }
+
+  try {
+    const text = (await response.text()).trim();
+    return text || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 export default function NewDesignPage() {
   const router = useRouter();
   const [name, setName] = useState("My Food Forest Design");
@@ -33,6 +60,9 @@ export default function NewDesignPage() {
   const [results, setResults] = useState<{ displayName: string; lat: number; lon: number }[]>([]);
   const [marker, setMarker] = useState<[number, number]>([-97.7431, 30.2672]);
   const [boundary, setBoundary] = useState<[number, number][]>([]);
+  const [circles, setCircles] = useState<MapCircle[]>([]);
+  const [annotations, setAnnotations] = useState<MapAnnotation[]>([]);
+  const [activeTool, setActiveTool] = useState<MapTool>("draw-polygon");
   const [error, setError] = useState("");
   const [prefs, setPrefs] = useState(initialPrefs);
   const [existing, setExisting] = useState<ProjectRecord[]>([]);
@@ -56,7 +86,10 @@ export default function NewDesignPage() {
     try {
       const parsed = JSON.parse(importText);
       const res = await fetch("/api/import", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(parsed) });
-      if (!res.ok) throw new Error();
+      if (!res.ok) {
+        setError(await readErrorMessage(res));
+        return;
+      }
       const p: ProjectRecord = await res.json();
       router.push(`/design/${p.id}`);
     } catch {
@@ -71,17 +104,39 @@ export default function NewDesignPage() {
       return;
     }
 
+    const shadeZones = annotations
+      .filter((annotation) => annotation.type === "full-sun" || annotation.type === "part-shade" || annotation.type === "shade")
+      .map((annotation) => ({ id: annotation.id, level: annotation.type, points: [annotation.point] }));
+
+    const structures = annotations
+      .filter((annotation) => annotation.type === "structure" || annotation.type === "existing-tree")
+      .map((annotation) => ({ id: annotation.id, type: annotation.type, point: annotation.point }));
+
     const res = await fetch("/api/projects", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, latitude: marker[1], longitude: marker[0], boundary, preferences: prefs, shadeZones: [] })
+      body: JSON.stringify({
+        name,
+        latitude: marker[1],
+        longitude: marker[0],
+        boundary,
+        preferences: prefs,
+        shadeZones,
+        structures,
+        circles
+      })
     });
 
     if (!res.ok) {
-      const e = await res.json();
-      setError(e.error || "Failed to create project");
+      setError(await readErrorMessage(res));
       return;
     }
+
+    if (!isJsonResponse(res)) {
+      setError("Project creation failed: expected JSON response from server.");
+      return;
+    }
+
     const project: ProjectRecord = await res.json();
     router.push(`/design/${project.id}`);
   }
@@ -96,11 +151,23 @@ export default function NewDesignPage() {
         <p className="text-xs text-bark/70">If geocoding fails, drag the marker manually and proceed.</p>
       </section>
 
-      <MapEditor center={marker} marker={marker} boundary={boundary} onMarkerChange={setMarker} onBoundaryChange={setBoundary} />
-      <BoundaryTools onUndo={() => setBoundary(boundary.slice(0, -1))} onClear={() => setBoundary([])} />
+      <MapEditor
+        center={marker}
+        marker={marker}
+        boundary={boundary}
+        circles={circles}
+        annotations={annotations}
+        activeTool={activeTool}
+        onToolChange={setActiveTool}
+        onMarkerChange={setMarker}
+        onBoundaryChange={setBoundary}
+        onCirclesChange={setCircles}
+        onAnnotationsChange={setAnnotations}
+      />
 
       <section className="card p-4 grid gap-3 md:grid-cols-2">
         <p className="text-sm">Lot area estimate: <strong>{area || 0} sqm</strong></p>
+        <p className="text-sm">Boundary points: <strong>{boundary.length}</strong> • Circle zones: <strong>{circles.length}</strong> • Annotations: <strong>{annotations.length}</strong></p>
         <label className="text-sm">Design template<select className="mt-1 w-full rounded border p-2" value={prefs.templateKey} onChange={(e) => setPrefs({ ...prefs, templateKey: e.target.value })}>{DESIGN_TEMPLATES.map((t) => <option key={t.key} value={t.key}>{t.name}</option>)}</select></label>
         <label className="text-sm">Maintenance tolerance<select className="mt-1 w-full rounded border p-2" value={prefs.maintenanceTolerance} onChange={(e) => setPrefs({ ...prefs, maintenanceTolerance: e.target.value })}><option>low</option><option>medium</option><option>high</option></select></label>
         <label className="text-sm">Irrigation tolerance<select className="mt-1 w-full rounded border p-2" value={prefs.irrigationTolerance} onChange={(e) => setPrefs({ ...prefs, irrigationTolerance: e.target.value })}><option>low</option><option>medium</option><option>high</option></select></label>

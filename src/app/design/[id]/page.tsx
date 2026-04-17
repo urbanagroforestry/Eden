@@ -3,10 +3,40 @@
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
-import { BoundaryTools } from "@/components/BoundaryTools";
+import { z } from "zod";
 import { LayoutItemRecord, ProjectRecord, RecommendationResponse } from "@/lib/contracts";
+import type { MapAnnotation, MapCircle, MapTool } from "@/components/MapEditor";
 
 const MapEditor = dynamic(() => import("@/components/MapEditor"), { ssr: false });
+
+const shadeSchema = z.array(
+  z.object({
+    id: z.string(),
+    level: z.enum(["full-sun", "part-shade", "shade"]),
+    points: z.array(z.tuple([z.number(), z.number()]))
+  })
+);
+
+const structuresSchema = z.object({
+  structures: z
+    .array(
+      z.object({
+        id: z.string(),
+        type: z.enum(["structure", "existing-tree"]),
+        point: z.tuple([z.number(), z.number()])
+      })
+    )
+    .default([]),
+  circles: z
+    .array(
+      z.object({
+        id: z.string(),
+        center: z.tuple([z.number(), z.number()]),
+        radiusMeters: z.number().positive()
+      })
+    )
+    .default([])
+});
 
 async function fetchRecommendation(projectId: string): Promise<RecommendationResponse> {
   const r = await fetch("/api/recommend", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ projectId }) });
@@ -19,6 +49,9 @@ export default function DesignDetailPage() {
   const [project, setProject] = useState<ProjectRecord | null>(null);
   const [boundary, setBoundary] = useState<[number, number][]>([]);
   const [shade, setShade] = useState<{ id: string; level: "full-sun" | "part-shade" | "shade"; points: [number, number][] }[]>([]);
+  const [circles, setCircles] = useState<MapCircle[]>([]);
+  const [annotations, setAnnotations] = useState<MapAnnotation[]>([]);
+  const [activeTool, setActiveTool] = useState<MapTool>("move");
   const [rec, setRec] = useState<RecommendationResponse | null>(null);
   const [error, setError] = useState("");
   const [layoutItems, setLayoutItems] = useState<LayoutItemRecord[]>([]);
@@ -31,7 +64,23 @@ export default function DesignDetailPage() {
         const data: ProjectRecord = await res.json();
         setProject(data);
         setBoundary(data.boundaryGeoJson ? JSON.parse(data.boundaryGeoJson) : []);
-        setShade(data.shadeGeoJson ? JSON.parse(data.shadeGeoJson) : []);
+
+        const parsedShade = shadeSchema.safeParse(data.shadeGeoJson ? JSON.parse(data.shadeGeoJson) : []);
+        const safeShade = parsedShade.success ? parsedShade.data : [];
+        setShade(safeShade);
+        const shadeAnnotations: MapAnnotation[] = safeShade.map((z) => ({ id: z.id, type: z.level, point: z.points[0] }));
+
+        const parsedStructures = structuresSchema.safeParse(data.structuresJson ? JSON.parse(data.structuresJson) : {});
+        const safeStructures = parsedStructures.success ? parsedStructures.data : { structures: [], circles: [] };
+
+        const structureAnnotations: MapAnnotation[] = safeStructures.structures.map((item) => ({
+          id: item.id,
+          type: item.type,
+          point: item.point
+        }));
+
+        setAnnotations([...structureAnnotations, ...shadeAnnotations]);
+        setCircles(safeStructures.circles.map((circle) => ({ id: circle.id, center: circle.center, radiusMeters: circle.radiusMeters })));
         setLayoutItems(data.layoutItems ?? []);
         setRec(await fetchRecommendation(params.id));
       } catch (e) {
@@ -54,7 +103,18 @@ export default function DesignDetailPage() {
     const res = await fetch(`/api/projects/${params.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ boundaryGeoJson: JSON.stringify(boundary), shadeGeoJson: JSON.stringify(shade), structuresJson: JSON.stringify([]) })
+      body: JSON.stringify({
+        boundaryGeoJson: JSON.stringify(boundary),
+        shadeGeoJson: JSON.stringify(
+          annotations
+            .filter((a) => a.type === "full-sun" || a.type === "part-shade" || a.type === "shade")
+            .map((a) => ({ id: a.id, level: a.type, points: [a.point] }))
+        ),
+        structuresJson: JSON.stringify({
+          structures: annotations.filter((a) => a.type === "structure" || a.type === "existing-tree"),
+          circles
+        })
+      })
     });
     if (!res.ok) setError("Failed to save edits");
   }
@@ -88,17 +148,30 @@ export default function DesignDetailPage() {
       <h1 className="text-2xl font-semibold text-moss">{project?.name}</h1>
       <div className="grid gap-4 md:grid-cols-[2fr_1fr]">
         <div className="space-y-3">
-          <MapEditor center={[project!.longitude, project!.latitude]} marker={[project!.longitude, project!.latitude]} boundary={boundary} onMarkerChange={() => {}} onBoundaryChange={setBoundary} />
-          <BoundaryTools onUndo={() => setBoundary(boundary.slice(0, -1))} onClear={() => setBoundary([])} />
+          <MapEditor
+            center={[project!.longitude, project!.latitude]}
+            marker={[project!.longitude, project!.latitude]}
+            boundary={boundary}
+            circles={circles}
+            annotations={annotations}
+            activeTool={activeTool}
+            onToolChange={setActiveTool}
+            onMarkerChange={() => {}}
+            onBoundaryChange={setBoundary}
+            onCirclesChange={setCircles}
+            onAnnotationsChange={(items) => {
+              setAnnotations(items);
+              setShade(
+                items
+                  .filter((a) => a.type === "full-sun" || a.type === "part-shade" || a.type === "shade")
+                  .map((a) => ({ id: a.id, level: a.type, points: [a.point] }))
+              );
+            }}
+          />
           <div className="card p-4">
-            <h3 className="font-semibold">Shade refinement</h3>
-            <p className="text-sm text-bark/70">Manual shade entries are treated as user-corrected and prioritized over inferred light distribution.</p>
-            <div className="mt-2 flex gap-2">
-              {(["full-sun", "part-shade", "shade"] as const).map((level) => (
-                <button key={level} className="rounded border px-2 py-1 text-xs" onClick={() => setShade([...shade, { id: crypto.randomUUID(), level, points: [[project!.longitude, project!.latitude]] }])}>{level}</button>
-              ))}
-            </div>
-            <ul className="mt-2 text-xs">{shade.map((s) => <li key={s.id}>{s.level} zone</li>)}</ul>
+            <h3 className="font-semibold">Map editing</h3>
+            <p className="text-sm text-bark/70">Use the floating toolkit to add boundary points, circles, structures, trees, and shade annotations.</p>
+            <p className="mt-2 text-xs">Current annotations: {annotations.length} • Shade markers: {shade.length} • Radius zones: {circles.length}</p>
           </div>
         </div>
         <aside className="space-y-3">
