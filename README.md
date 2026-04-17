@@ -121,6 +121,15 @@ If migrations were interrupted, you can reset local DB (destructive):
 npx prisma migrate reset
 ```
 
+
+### 4) Map tiles blocked (OSM referer policy)
+If map tiles show OSM access-blocked imagery in restrictive preview environments:
+```bash
+# Optional fallback tile source for previews
+NEXT_PUBLIC_TILE_PROVIDER="carto-light"
+```
+Then restart dev server. Default remains OpenStreetMap (`osm`) and attribution is preserved in the map UI.
+
 ## Scientific honesty and disclaimers
 Food Forest Forge is concept-planning software only; not legal, utility-locate, engineering, or stamped landscape architecture advice. Always verify on site.
 

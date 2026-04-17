@@ -67,9 +67,18 @@ export async function POST(req: Request) {
     if (!parsed.success) return jsonError("Invalid project payload.", 400);
 
     const input = parsed.data;
+    console.info("[api/projects][POST] payload parsed", {
+      name: input.name,
+      hasBoundary: Boolean(input.boundary?.length),
+      shadeZones: input.shadeZones?.length ?? 0,
+      structures: input.structures?.length ?? 0,
+      circles: input.circles?.length ?? 0
+    });
+
     if (input.boundary) {
       const validity = isValidBoundary(input.boundary);
       if (!validity.valid) return jsonError(validity.reason || "Boundary is invalid.", 400);
+      console.info("[api/projects][POST] boundary validated", { points: input.boundary.length });
     }
 
     const area = input.boundary ? areaFromBoundary(input.boundary) : 800;
@@ -81,6 +90,14 @@ export async function POST(req: Request) {
       boundary: input.boundary,
       shadeZones: input.shadeZones
     });
+
+    console.info("[api/projects][POST] site profile generated", {
+      hardinessZone: profile.hardinessZone,
+      precipitationBand: profile.precipitationBand,
+      lotAreaSqm: profile.lotAreaSqm
+    });
+
+    console.info("[api/projects][POST] creating project row", { name: input.name, latitude: input.latitude, longitude: input.longitude });
 
     const project = await prisma.project.create({
       data: {
@@ -125,6 +142,10 @@ export async function POST(req: Request) {
     return NextResponse.json(project, { status: 201 });
   } catch (error) {
     console.error("[api/projects][POST] unexpected error", error);
+    const message = error instanceof Error ? error.message : "Unknown error";
+    if (process.env.NODE_ENV !== "production") {
+      return jsonError(`Unexpected server error while creating project: ${message}`, 500);
+    }
     return jsonError("Unexpected server error while creating project.", 500);
   }
 }

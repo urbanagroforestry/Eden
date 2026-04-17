@@ -4,6 +4,27 @@ import { Circle, CircleMarker, MapContainer, Marker, Polygon, TileLayer, Tooltip
 import L from "leaflet";
 import { useMemo } from "react";
 
+
+
+type TileProvider = {
+  url: string;
+  attribution: string;
+};
+
+const TILE_PROVIDERS: Record<"osm" | "carto-light", TileProvider> = {
+  osm: {
+    url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+    attribution: "&copy; OpenStreetMap contributors"
+  },
+  "carto-light": {
+    url: "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
+    attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
+  }
+};
+
+const selectedTileProvider =
+  process.env.NEXT_PUBLIC_TILE_PROVIDER === "carto-light" ? TILE_PROVIDERS["carto-light"] : TILE_PROVIDERS.osm;
+
 const markerIcon = L.icon({
   iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
   shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
@@ -209,7 +230,7 @@ export default function MapEditor({
   return (
     <div className="relative h-[500px] overflow-hidden rounded-xl border">
       <MapContainer center={[center[1], center[0]]} zoom={17} className="h-full w-full">
-        <TileLayer attribution='&copy; OpenStreetMap contributors' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+        <TileLayer attribution={selectedTileProvider.attribution} url={selectedTileProvider.url} />
         <Marker
           icon={markerIcon}
           draggable
