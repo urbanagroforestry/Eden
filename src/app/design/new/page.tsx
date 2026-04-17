@@ -28,6 +28,26 @@ const toggleInArray = (arr: string[], value: string) => (arr.includes(value) ? a
 
 type ApiErrorShape = { error?: string | { message?: string }; message?: string };
 
+type ParsedResponseBody = {
+  text: string;
+  json: unknown | null;
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null;
+
+async function parseResponseBody(response: Response): Promise<ParsedResponseBody> {
+  const text = await response.text();
+  const trimmed = text.trim();
+
+  if (!trimmed) return { text: "", json: null };
+
+  try {
+    return { text, json: JSON.parse(trimmed) as unknown };
+  } catch {
+    return { text, json: null };
+  }
+}
+
 const isJsonResponse = (response: Response) => (response.headers.get("content-type") || "").includes("application/json");
 
 async function readErrorMessage(response: Response): Promise<string> {
@@ -112,6 +132,15 @@ export default function NewDesignPage() {
       .filter((annotation) => annotation.type === "structure" || annotation.type === "existing-tree")
       .map((annotation) => ({ id: annotation.id, type: annotation.type, point: annotation.point }));
 
+    console.info("[createProject] submitting", {
+      name,
+      marker,
+      boundaryPoints: boundary.length,
+      shadeZones: shadeZones.length,
+      structures: structures.length,
+      circles: circles.length
+    });
+
     const res = await fetch("/api/projects", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -127,18 +156,51 @@ export default function NewDesignPage() {
       })
     });
 
+    const parsedBody = await parseResponseBody(res);
+    console.info("[createProject] response", {
+      status: res.status,
+      ok: res.ok,
+      contentType: res.headers.get("content-type"),
+      hasBody: parsedBody.text.trim().length > 0,
+      hasJson: parsedBody.json !== null
+    });
+
     if (!res.ok) {
-      setError(await readErrorMessage(res));
+      if (isRecord(parsedBody.json)) {
+        const jsonError = parsedBody.json.error;
+        const jsonMessage = parsedBody.json.message;
+        if (typeof jsonError === "string") {
+          setError(jsonError);
+          return;
+        }
+        if (isRecord(jsonError) && typeof jsonError.message === "string") {
+          setError(jsonError.message);
+          return;
+        }
+        if (typeof jsonMessage === "string") {
+          setError(jsonMessage);
+          return;
+        }
+      }
+
+      const fallbackText = parsedBody.text.trim();
+      setError(fallbackText || `Failed to create project (${res.status}).`);
       return;
     }
 
-    if (!isJsonResponse(res)) {
-      setError("Project creation failed: expected JSON response from server.");
+    const projectPayload = isRecord(parsedBody.json) ? parsedBody.json : null;
+    const projectId = typeof projectPayload?.id === "string" ? projectPayload.id : null;
+
+    if (!projectId) {
+      console.warn("[createProject] successful response missing project id", {
+        status: res.status,
+        bodyPreview: parsedBody.text.slice(0, 200)
+      });
+      setError("Project was created response could not be confirmed. Please reload and check saved projects.");
       return;
     }
 
-    const project: ProjectRecord = await res.json();
-    router.push(`/design/${project.id}`);
+    router.push(`/design/${projectId}`);
   }
 
   return (
