@@ -1,0 +1,9 @@
+@import "leaflet/dist/leaflet.css";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root { color-scheme: light; }
+body { @apply bg-sage text-bark antialiased; }
+.card { @apply bg-white/95 border border-emerald-100 rounded-xl shadow-sm; }
+.badge { @apply text-xs px-2 py-1 rounded-full border; }
