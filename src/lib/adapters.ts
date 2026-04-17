@@ -13,17 +13,24 @@ export interface FutureDataAdapter {
   fetch: (lat: number, lon: number) => Promise<unknown>;
 }
 
-const estimateHardiness = (lat: number): string => {
+const estimateHardiness = (lat: number, lon: number): string => {
+  // Keep North Texas / Collin County in realistic range (generally ~8a/8b, not 9a+).
+  const inNorthTexas = lat >= 32 && lat <= 34.7 && lon >= -99.5 && lon <= -95;
+  if (inNorthTexas) return "8a";
+
   const abs = Math.abs(lat);
   if (abs > 47) return "5b";
   if (abs > 43) return "6b";
   if (abs > 39) return "7a";
   if (abs > 34) return "8a";
-  if (abs > 30) return "9a";
-  return "10a";
+  if (abs > 30) return "8b";
+  return "9a";
 };
 
-const estimatePrecip = (lon: number): string => {
+const estimatePrecip = (lat: number, lon: number): string => {
+  const inNorthTexas = lat >= 32 && lat <= 34.7 && lon >= -99.5 && lon <= -95;
+  if (inNorthTexas) return "north-texas-subhumid";
+
   if (lon < -120) return "medium-high";
   if (lon < -105) return "low";
   if (lon < -90) return "medium";
@@ -57,9 +64,9 @@ export class HeuristicEnvironmentalAdapter implements EnvironmentalAdapter {
 
     return {
       lotAreaSqm: input.lotAreaSqm,
-      hardinessZone: estimateHardiness(input.latitude),
+      hardinessZone: estimateHardiness(input.latitude, input.longitude),
       hardinessConfidence: Confidence.MEDIUM,
-      precipitationBand: estimatePrecip(input.longitude),
+      precipitationBand: estimatePrecip(input.latitude, input.longitude),
       precipitationConf: Confidence.MEDIUM,
       sunExposure,
       slopeAspect: input.latitude > 38 ? "gentle south" : "gentle east",

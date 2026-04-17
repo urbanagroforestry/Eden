@@ -27,6 +27,24 @@ export type RecommendationOutput = {
   phasedPlan: string[];
 };
 
+
+
+const regionFitScore = (regionalTags: string, precipitationBand: string): number => {
+  const tags = regionalTags.toLowerCase();
+  const isNorthTexas = precipitationBand.toLowerCase().includes("north-texas");
+
+  if (!isNorthTexas) return tags.includes("nationwide") ? 0.8 : 0;
+
+  if (tags.includes("north-texas") || tags.includes("texas") || tags.includes("south-central") || tags.includes("plains")) {
+    return 3.2;
+  }
+  if (tags.includes("nationwide") || tags.includes("continental")) return 1.2;
+  if (tags.includes("mediterranean") || tags.includes("coastal") || tags.includes("tropical") || tags.includes("pacific")) {
+    return -2.4;
+  }
+  return -0.4;
+};
+
 const layerSunFit = (plantSun: string, fullSunShare: number) => {
   if (plantSun.includes("full-sun") && fullSunShare > 0.4) return 1;
   if (plantSun.includes("part-shade")) return 0.8;
@@ -50,6 +68,9 @@ export function recommendPlants(input: {
       (input.prefs.constraints.includes("avoidMessyFruitNearWalkway") ? p.messyFruitRisk : 0)
     ) * 0.6;
 
+    const spreadPenalty = p.cautions.toLowerCase().includes("aggressive") ? 1.4 : 0;
+    const regionalBoost = regionFitScore(p.regionalTags, input.site.precipitationBand);
+
     const score =
       p.productionValue * input.template.weights.production +
       p.biodiversityValue * input.template.weights.biodiversity +
@@ -57,8 +78,10 @@ export function recommendPlants(input: {
       maintenanceFit * input.template.weights.maintenanceFit +
       waterFit * input.template.weights.waterFit +
       p.neighborhoodFriendliness * input.template.weights.neighborhoodFriendliness +
-      layerSunFit(p.sunNeeds, input.site.sunExposure["full-sun"]) * 2 -
-      conflictPenalty;
+      layerSunFit(p.sunNeeds, input.site.sunExposure["full-sun"]) * 2 +
+      regionalBoost -
+      conflictPenalty -
+      spreadPenalty;
 
     return { plant: p, score };
   });
@@ -75,7 +98,7 @@ export function recommendPlants(input: {
       layer,
       recommended,
       alternatives,
-      recommendedRationales: recommended.map((p) => `${p.commonName} fits zone ${input.site.hardinessZone}, ${p.sunNeeds} light, and ${p.maintenanceLevel} maintenance expectations.`),
+      recommendedRationales: recommended.map((p) => `${p.commonName} fits zone ${input.site.hardinessZone}, ${input.site.precipitationBand} moisture pattern, ${p.sunNeeds} light, and ${p.maintenanceLevel} maintenance expectations.`),
       warning: recommended.length === 0 ? "Low fit for this layer at current constraints. Verify on site." : undefined
     };
   });

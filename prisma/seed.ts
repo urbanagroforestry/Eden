@@ -47,6 +47,41 @@ const layerTemplates: Record<Layer, Omit<PlantSeed, "id" | "commonName" | "scien
   SUPPORT: {supportRole: "pollinator", edibleCategory: "support", edibleUse: "ecology", hardinessMin: 4, hardinessMax: 10, regionalTags: "nationwide", sunNeeds: "full-sun/part-shade", waterNeeds: "low-medium", soilTolerance: "wide", drainageTolerance: "wide", pHTolerance: "5.5-7.8", matureHeight: 1.2, matureWidth: 1, spreadHabit: "clumping", rootBehavior: "fibrous", maintenanceLevel: "low", rootRiskNearFoundation: 1, messyFruitRisk: 1, childFriendlyFlag: true, pollinatorValue: 5, biodiversityValue: 5, productionValue: 1, aestheticValue: 4, neighborhoodFriendliness: 5, notes: "Ecological support species.", cautions: "Not primarily for food yield."}
 };
 
+
+
+const northTexasPreferred = new Set([
+  "Pecan",
+  "Persimmon",
+  "Mulberry",
+  "Serviceberry",
+  "Jujube",
+  "Fig",
+  "Blueberry",
+  "Blackberry",
+  "Elderberry",
+  "Sea Buckthorn",
+  "Yarrow",
+  "Oregano",
+  "Sage",
+  "Comfrey",
+  "Strawberry",
+  "Clover",
+  "Garlic",
+  "Onion",
+  "Daikon",
+  "Beet",
+  "Carrot",
+  "Grape",
+  "Hardy Kiwi",
+  "Groundnut",
+  "Lupine",
+  "White Clover",
+  "Crimson Clover",
+  "Switchgrass"
+]);
+
+const aggressiveSpreaders = new Set(["Mint", "Ajuga", "Clover", "Jerusalem Artichoke", "Oregano Mat"]);
+
 const species: Record<Layer, [string, string][]> = {
   CANOPY: [["Chestnut", "Castanea dentata"],["Pecan", "Carya illinoinensis"],["Mulberry", "Morus rubra"],["Walnut", "Juglans nigra"],["Persimmon", "Diospyros virginiana"],["Apple Standard", "Malus domestica"],["Pear Standard", "Pyrus communis"],["Oak (acorn)", "Quercus alba"],["Honey Locust", "Gleditsia triacanthos"],["Black Cherry", "Prunus serotina"],["Pawpaw Tall", "Asimina triloba"]],
   LOW_TREE: [["Peach", "Prunus persica"],["Plum", "Prunus domestica"],["Apricot", "Prunus armeniaca"],["Fig", "Ficus carica"],["Loquat", "Eriobotrya japonica"],["Serviceberry", "Amelanchier alnifolia"],["Dwarf Apple", "Malus domestica dwarf"],["Dwarf Pear", "Pyrus communis dwarf"],["Jujube", "Ziziphus jujuba"],["Quince", "Cydonia oblonga"],["Medlar", "Mespilus germanica"]],
@@ -73,10 +108,13 @@ function buildPlants(): PlantSeed[] {
         hardinessMin: Math.max(3, base.hardinessMin - (idx % 2)),
         hardinessMax: Math.min(11, base.hardinessMax + (idx % 2)),
         waterNeeds: ["low", "medium", "high"][idx % 3],
-        maintenanceLevel: ["low", "medium", "high"][idx % 3],
         sunNeeds: ["full-sun", "part-shade", "full-sun/part-shade"][idx % 3],
         productionValue: Math.min(5, base.productionValue + (idx % 2)),
-        notes: `${base.notes} Demo profile ${idx + 1}.`
+        regionalTags: northTexasPreferred.has(commonName) ? `north-texas,south-central,plains,${base.regionalTags}` : base.regionalTags,
+        spreadHabit: aggressiveSpreaders.has(commonName) ? "aggressive-spreader" : base.spreadHabit,
+        maintenanceLevel: aggressiveSpreaders.has(commonName) ? "high" : ["low", "medium", "high"][idx % 3],
+        notes: `${base.notes} Demo profile ${idx + 1}.`,
+        cautions: aggressiveSpreaders.has(commonName) ? `${base.cautions} Aggressive spreader; use root barriers or containers in suburban beds.` : base.cautions
       });
     });
   });
