@@ -1,8 +1,8 @@
 "use client";
 
-import { Circle, CircleMarker, MapContainer, Marker, Polygon, TileLayer, Tooltip, useMapEvents } from "react-leaflet";
+import { Circle, CircleMarker, MapContainer, Marker, Polygon, TileLayer, Tooltip, useMap, useMapEvents } from "react-leaflet";
 import L from "leaflet";
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 
 
 
@@ -113,6 +113,19 @@ const distanceSquared = (a: [number, number], b: [number, number]) => {
   return dLon * dLon + dLat * dLat;
 };
 
+
+function RecenterOnPoint({ target, zoom = 18 }: { target: [number, number]; zoom?: number }) {
+  const map = useMap();
+
+  useEffect(() => {
+    const latLng: [number, number] = [target[1], target[0]];
+    console.info("[MapEditor] recenter", { lon: target[0], lat: target[1], zoom });
+    map.setView(latLng, zoom, { animate: true });
+  }, [map, target, zoom]);
+
+  return null;
+}
+
 function MapClickHandler({
   activeTool,
   marker,
@@ -134,6 +147,7 @@ function MapClickHandler({
       }
 
       if (activeTool === "draw-polygon") {
+        console.info("[MapEditor] polygon vertex", { lon: point[0], lat: point[1] });
         onBoundaryChange([...boundary, point]);
         return;
       }
@@ -230,6 +244,7 @@ export default function MapEditor({
   return (
     <div className="relative h-[500px] overflow-hidden rounded-xl border">
       <MapContainer center={[center[1], center[0]]} zoom={17} className="h-full w-full">
+        <RecenterOnPoint target={center} zoom={17} />
         <TileLayer attribution={selectedTileProvider.attribution} url={selectedTileProvider.url} />
         <Marker
           icon={markerIcon}

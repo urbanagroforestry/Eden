@@ -40,6 +40,14 @@ type ProjectSummary = Pick<ProjectRecord, "id" | "name">;
 const isProjectSummary = (value: unknown): value is ProjectSummary =>
   isRecord(value) && typeof value.id === "string" && typeof value.name === "string";
 
+
+
+const distanceInDegrees = (a: [number, number], b: [number, number]) => {
+  const dLon = a[0] - b[0];
+  const dLat = a[1] - b[1];
+  return Math.sqrt(dLon * dLon + dLat * dLat);
+};
+
 function normalizeProjectsPayload(payload: unknown): ProjectSummary[] {
   if (Array.isArray(payload)) {
     const normalized = payload.filter(isProjectSummary);
@@ -155,6 +163,31 @@ export default function NewDesignPage() {
     }
   }
 
+
+
+  function reconcileDraftGeometry(nextPoint: [number, number]) {
+    if (boundary.length === 0) return;
+    const firstVertex = boundary[0];
+    const drift = distanceInDegrees(firstVertex, nextPoint);
+    if (drift > 0.02) {
+      console.info("[design/new] clearing stale draft geometry after site change", {
+        previousVertex: firstVertex,
+        nextPoint,
+        drift
+      });
+      setBoundary([]);
+      setCircles([]);
+      setAnnotations([]);
+      setActiveTool("draw-polygon");
+    }
+  }
+
+  function applyGeocodeSelection(point: [number, number], displayName: string) {
+    console.info("[design/new] geocode selected", { displayName, lon: point[0], lat: point[1] });
+    reconcileDraftGeometry(point);
+    setMarker(point);
+  }
+
   async function createProject() {
     const check = isValidBoundary(boundary);
     if (!check.valid) {
@@ -247,7 +280,7 @@ export default function NewDesignPage() {
       <section className="card p-4 space-y-3">
         <label className="block text-sm">Project name<input className="mt-1 w-full rounded border p-2" value={name} onChange={(e) => setName(e.target.value)} /></label>
         <div className="flex gap-2"><input className="flex-1 rounded border p-2" placeholder="Search U.S. address" value={query} onChange={(e) => setQuery(e.target.value)} /><button onClick={searchAddress} className="rounded bg-moss px-3 py-2 text-white">Search</button></div>
-        {results.length > 0 && <ul className="max-h-36 overflow-auto rounded border bg-white text-sm">{results.map((r) => <li key={r.displayName}><button className="w-full p-2 text-left hover:bg-emerald-50" onClick={() => setMarker([r.lon, r.lat])}>{r.displayName}</button></li>)}</ul>}
+        {results.length > 0 && <ul className="max-h-36 overflow-auto rounded border bg-white text-sm">{results.map((r) => <li key={r.displayName}><button className="w-full p-2 text-left hover:bg-emerald-50" onClick={() => applyGeocodeSelection([r.lon, r.lat], r.displayName)}>{r.displayName}</button></li>)}</ul>}
         <p className="text-xs text-bark/70">If geocoding fails, drag the marker manually and proceed.</p>
       </section>
 
